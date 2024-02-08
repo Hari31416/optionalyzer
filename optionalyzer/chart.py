@@ -2,44 +2,10 @@ import numpy as np
 import plotly.graph_objects as go
 import datetime
 
-from optionalyzer.options import Options, Call, Put
-
+from .options import Options
 
 TODAY = datetime.date.today()
-POINTS = 200
-LOT_SIZE = 50
-
-
-class Position:
-    """
-    The class represents an option position. Short and Long
-    """
-
-    def __init__(self, option: Options, position_type: str) -> None:
-        self.option = self.__resolve_option(option=option)
-        self._type = self.__resolve_position_type(position_type=position_type)
-
-    def __resolve_option(self, option: Options):
-        if not isinstance(option, Options):
-            raise ValueError("Given `option` in not an `Option`")
-        return option
-
-    def __resolve_position_type(self, position_type):
-        if position_type.lower() in ["short", "s"]:
-            return -1
-        elif position_type.lower() in ["long", "l"]:
-            return 1
-
-    def __str__(self) -> str:
-        option_string = str(self.option)
-        if self._type == 1:
-            option_string = f"Position(Long {option_string})"
-        else:
-            option_string = f"Position(Short {option_string})"
-        return option_string
-
-    def __repr__(self) -> str:
-        return str(self)
+POINTS = 1000
 
 
 class PayoffChart:
@@ -48,308 +14,231 @@ class PayoffChart:
 
     Parameters
     ----------
-    positions : list[Position]
-        A list of `Position`.
+    options : list[Options]
+        A list of options.
+    positions : list[str]
+        A list of positions. Must be the same length as options. Each position must be either "long" or "short".
+    sigma : list[float]
+        A list of volatilities. Must be the same length as options.
     spot_price : float
         The current price of the underlying asset.
     """
 
     def __init__(
         self,
-        positions: list[Position],
+        options: list[Options],
+        positions: list[str],
+        sigmas: list[float],
         spot_price: float,
     ) -> None:
-        self.positions = self.__resolve_positions(positions=positions)
-        self.set_spot_price(spot_price=spot_price)
-
-    def __resolve_positions(self, positions):
-        if not isinstance(positions, list):
-            raise ValueError(
-                "`positions` is not a `list`. If you have a single position, please wrap it inside a list."
-            )
-
-        for position in positions:
-            if not isinstance(position, Position):
-                raise ValueError(f"{position} is not a `Position`.")
-        return positions
+        self.options = options
+        self.positions = positions
+        self.sigmas = sigmas
+        self.spot_price = spot_price
 
     def __repr__(self) -> str:
-        return f"PayoffChart({self.positions})"
+        return f"PayoffChart({self.options}, {self.positions}, {self.spot_price})"
 
-    def __iter__(self):
-        for position in self.positions:
-            yield position
-
-    def set_spot_price(self, spot_price):
-        if spot_price < 0:
-            raise ValueError("Spot price can not be less than zero.")
-        self.__spot_price = spot_price
-
-    def create_position(
+    def add_options(
         self,
-        strike_price,
-        expiry_date,
-        iv,
-        option_type,
-        position_type,
-        date_format="%d-%m-%Y",
-        add=True,
-    ):
-        """
-        Creates an option position
-
-        Parameters
-        ----------
-        strike_price : float
-            The strike price of the option.
-        expiry_date : str
-            The expiry date of the option. Format: dd-mm-yyyy
-        iv : float
-            The implied volatility of the option.
-        option_type : str
-            The type of the option. Either "call" or "put".
-        position_type : str
-            The type of the position. Either "long" or "short".
-        date_format : str, optional
-            The format of the date. The default is "%d-%m-%Y".
-        add : bool, optional
-            If True, the position is added to the list of positions. The default is True.
-        Returns
-        -------
-        Position
-            The position object.
-        """
-        if option_type.lower() == "call":
-            option = Call(
-                strike_price=strike_price,
-                expiry_date=expiry_date,
-                iv=iv,
-                date_format=date_format,
-            )
-        elif option_type.lower() == "put":
-            option = Put(
-                strike_price=strike_price,
-                expiry_date=expiry_date,
-                iv=iv,
-                date_format=date_format,
-            )
-        else:
-            raise ValueError(
-                f"Invalid option type `{option_type}`. Please use either `call` or `put`."
-            )
-        pos = Position(option=option, position_type=position_type)
-        if add:
-            self.positions.append(pos)
-        return pos
-
-    def create_positions(
-        self,
-        strike_prices,
-        expiry_dates,
-        ivs,
-        option_types,
-        position_types,
-        date_format="%d-%m-%Y",
-        add=True,
-    ):
-        """
-        Creates a list of option positions.
-
-        Parameters
-        ----------
-        strike_prices : list[float]
-            A list of strike prices.
-        expiry_dates : list[str]
-            A list of expiry dates. Format: dd-mm-yyyy
-        ivs : list[float]
-            A list of implied volatilities.
-        option_types : list[str]
-            A list of option types. Either "call" or "put".
-        position_types : list[str]
-            A list of position types. Either "long" or "short".
-        date_format : str, optional
-            The format of the date. The default is "%d-%m-%Y".
-        add : bool, optional
-            If True, the positions are added to the list of positions. The default is True.
-
-        Returns
-        -------
-        list[Position]
-            A list of position objects.
-        """
-        positions = []
-        for strike_price, expiry_date, iv, option_type, position_type in zip(
-            strike_prices, expiry_dates, ivs, option_types, position_types
-        ):
-            position = self.create_position(
-                strike_price=strike_price,
-                expiry_date=expiry_date,
-                iv=iv,
-                option_type=option_type,
-                position_type=position_type,
-                date_format=date_format,
-                add=add,
-            )
-            positions.append(position)
-        return positions
-
-    def add_positions(
-        self,
-        positions: list[Position],
+        options: list[Options],
+        positions: list[str],
+        sigmas: list[float],
     ):
         """
         Add options to the PayoffChart.
 
         Parameters
         ----------
-        positions : list[Position]
-            A list of Position.
+        options : list[Options]
+            A list of options.
+        positions : list[str]
+            A list of positions. Must be the same length as options. Each position must be either "long" or "short".
+        sigma : list[float]
+            A list of volatilities. Must be the same length as options.
 
         Returns
         -------
         None.
 
         """
-        positions = self.__resolve_positions(positions=positions)
-        self.positions.extend(positions)
+        if (
+            isinstance(options, list)
+            and isinstance(positions, list)
+            and isinstance(sigmas, list)
+        ):
+            self.options.extend(options)
+            self.positions.extend(positions)
+            self.sigmas.extend(sigmas)
+        else:
+            raise TypeError("options and positions must be lists.")
 
-    def remove_positions(self, positions: list[Position]):
+    def remove_options(self, options: list[Options]):
         """
-        Remove positions from the PayoffChart.
+        Remove options from the PayoffChart.
 
         Parameters
         ----------
-        positions : list[Position]
-            A list of positions to remove.
+        options : list[Options]
+            A list of options to remove.
 
         Returns
         -------
         None.
         """
-        positions = self.__resolve_positions(positions=positions)
-        for position in positions:
-            if position in self.positions:
-                self.positions.remove(position)
+        if isinstance(options, list):
+            for option in options:
+                if option in self.options:
+                    self.options.remove(option)
+                    self.positions.pop(self.options.index(option))
+        else:
+            raise TypeError("options must be a list.")
 
-    def __correct_price(self, price, position):
-        return price * position._type
+    def __correct_price(self, price, position_type):
+        if position_type == "long":
+            return price
+        elif position_type == "short":
+            return -price
+        else:
+            raise ValueError("Position must be either 'long' or 'short'.")
 
     def __calc_premium(
         self,
         spot_price,
-        position,
+        option,
+        position_type,
         date,
+        risk_free_rate,
+        volatility,
     ):
-        price = position.option.calculate_price(
+        price = option.calculate_price(
             spot_price=spot_price,
-            date=date,
-            return_greeks=False,
+            risk_free_rate=risk_free_rate,
+            volatility=volatility,
+            day=date,
         )
-        return self.__correct_price(price, position)
+        return self.__correct_price(price, position_type)
 
     def total_premium(
         self,
-        spot_price,
         date,
+        spot_price=None,
+        risk_free_rate=0.0342,
     ):
         """
         Calculate the total premium paid for the options.
 
         Parameters
         ----------
+        spot_price : float or None, optional
+            The underlying price. If None, use the spot price of the PayoffChart. Default is None.
         date : str
-            The date to calculate the premium. Format: "DD-MM-YYYY"
+            The date to calculate the premium. Format: "YYYY-MM-DD"
+        risk_free_rate : float, optional
+            The risk free rate. Default is 0.0342.
 
         Returns
         -------
         float
             The total premium paid.
         """
-        t_p = 0
-        for i in range(len(self.positions)):
-            pos_pnl = self.__calc_premium(
+        if spot_price is None:
+            spot_price = self.spot_price
+        t_p = np.zeros(POINTS)
+        for i in range(len(self.options)):
+            t_p += self.__calc_premium(
                 spot_price=spot_price,
-                position=self.positions[i],
+                option=self.options[i],
+                position_type=self.positions[i],
                 date=date,
+                risk_free_rate=risk_free_rate,
+                volatility=self.sigmas[i],
             )
-            t_p += pos_pnl
         return t_p
 
-    def __premium_paid(self, spot_price):
+    def __premium_paid(self, risk_free_rate):
         return self.total_premium(
+            spot_price=self.spot_price,
             date=TODAY,
-            spot_price=spot_price,
+            risk_free_rate=risk_free_rate,
         )
 
     def __min_expiry(self):
         expiries = []
-        for position in self.positions:
-            expiries.append(position.option.expiry_date)
+        for option in self.options:
+            expiries.append(option.expiry_date)
         return min(expiries)
 
-    def payoff_chart(self, date=None, range=0.1, new_spot_price=None, return_fig=False):
+    def payoff_chart(
+        self,
+        risk_free_rate=0.0342,
+        date=None,
+        range=0.1,
+        new_spot_price=None,
+    ):
         """
         Calculate the payoff chart of the options.
 
         Parameters:
         ----------
+        risk_free_rate : float, optional
+            The risk free rate. Default is 0.0342.
         date : str, optional
             The date to calculate the payoff chart. Default is None, which means the minimum expiry date of the options.
-            Format: "MM-DD-YYYY"
+            Format: "YYYY-MM-DD"
         range : float, optional
             The range of the underlying price. Default is 0.1.
         new_spot_price : float, optional
             The new spot price. Default is None, which means the original spot price.
-        return_fig : bool, optional
-            If True, the plotly figure is returned. Default is False.
 
         Returns:
         -------
-        fig : plotly.graph_objects.Figure if return_fig is True
+        fig : plotly.graph_objects.Figure
         """
         if new_spot_price:
-            self.set_spot_price(new_spot_price)
-        if date is None:
+            self.spot_price = new_spot_price
+        if not date:
             date = self.__min_expiry()
         min_expiry = self.__min_expiry()
         Ss = np.linspace(
-            self.__spot_price - range * self.__spot_price,
-            self.__spot_price + range * self.__spot_price,
+            self.spot_price - range * self.spot_price,
+            self.spot_price + range * self.spot_price,
             POINTS,
         )
-        premium_paid = self.__premium_paid(spot_price=self.__spot_price)
-        premium_recieved_at_T = self.total_premium(
+        premium_paid = self.__premium_paid(risk_free_rate)
+        t_premium = self.total_premium(
             spot_price=Ss,
             date=date,
+            risk_free_rate=risk_free_rate,
         )
-        pnl = premium_recieved_at_T - premium_paid
-        pnl = np.round(pnl, 0) * LOT_SIZE
+        pnl = t_premium - premium_paid
 
-        pv_pnl_mask = np.argwhere(pnl >= 0)
+        ps_pnl_mask = np.argwhere(pnl >= 0)
         ng_pnl_mask = np.argwhere(pnl < 0)
 
-        pv_pnl = pnl[pv_pnl_mask].flatten()
+        ps_pnl = pnl[ps_pnl_mask].flatten()
         ng_pnl = pnl[ng_pnl_mask].flatten()
 
-        pv_S = Ss[pv_pnl_mask].flatten()
+        ps_S = Ss[ps_pnl_mask].flatten()
         ng_S = Ss[ng_pnl_mask].flatten()
 
-        premium_at_expiry = self.total_premium(date=min_expiry, spot_price=Ss)
-
-        pnl_at_expiry = premium_at_expiry - premium_paid
-        pnl_at_expiry = np.round(pnl_at_expiry, 0) * LOT_SIZE
-
+        t_expiry_pre = self.total_premium(
+            spot_price=Ss,
+            date=min_expiry,
+            risk_free_rate=risk_free_rate,
+        )
+        expiry_premium = t_expiry_pre - premium_paid
         fig = go.Figure()
         fig.add_hline(0, line_dash="dash", line_color="white", name="Break Even")
         fig.add_vline(
-            self.__spot_price,
+            self.spot_price,
             line_dash="dash",
             line_color="white",
             name="Strike Price",
         )
         fig.add_trace(
             go.Scatter(
-                x=pv_S, y=pv_pnl, fill="tozeroy", fillcolor="rgba(0,255,0,0.5)", name=""
+                x=ps_S, y=ps_pnl, fill="tozeroy", fillcolor="rgba(0,255,0,0.5)", name=""
             )
         )
         fig.add_trace(
@@ -357,11 +246,11 @@ class PayoffChart:
                 x=ng_S, y=ng_pnl, fill="tozeroy", fillcolor="rgba(255,0,0,0.5)", name=""
             )
         )
-        fig.add_trace(go.Scatter(x=Ss, y=pnl, name=f"PnL on {date}", line_color="blue"))
+        fig.add_trace(go.Scatter(x=Ss, y=pnl, name="PnL", line_color="blue"))
         fig.add_trace(
             go.Scatter(
                 x=Ss,
-                y=pnl_at_expiry,
+                y=expiry_premium,
                 name="PnL at Expiry",
                 line_color="yellow",
             )
@@ -377,6 +266,4 @@ class PayoffChart:
             ),
         )
         fig.show()
-        if return_fig:
-            return fig
-        return Ss
+        return fig

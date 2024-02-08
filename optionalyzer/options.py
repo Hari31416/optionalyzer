@@ -1,53 +1,12 @@
-import datetime
+from .blackscholes import BlackScholes
 import numpy as np
+import datetime
 
-from optionalyzer.blackscholes import BlackScholes, RISK_FREE_RATE
-from optionalyzer import RISK_FREE_RATE
+
 class Options:
-    """
-    A base class for options.
-
-    Attributes
-    ----------
-    strike_price : float
-        The strike price of the option.
-    expiry_date : datetime.date
-        The expiry date of the option.
-    iv : float
-        The implied volatility of the option.
-    """
-
-    def __init__(self, strike_price, expiry_date, iv, date_format="%d-%m-%Y") -> None:
-        """
-        Initialize an option.
-
-        Parameters
-        ----------
-        strike_price : float
-            The strike price of the option.
-        expiry_date : str
-            The expiry date of the option. Date can be in any format however, you have to specify it.
-            If not specified, it assumes the format to be DD-MM-YYYY.
-        iv : float
-            The implied volatility of the option.
-
-        Attributes
-        ----------
-        strike_price : float
-            The strike price of the option.
-        expiry_date : datetime.date
-            The expiry date of the option.
-        iv : float
-            The implied volatility of the option.
-
-        Examples
-        --------
-        >>> call = Call(100, "15-01-2023", 0.2)
-        """
+    def __init__(self, strike_price, expiry_date) -> None:
         self.strike_price = strike_price
-        self.date_format = date_format
         self.expiry_date = self.__str_to_date(expiry_date)
-        self.iv = iv
 
     def calculate_price(self):
         raise NotImplementedError("You must implement the calculate_price method.")
@@ -61,57 +20,42 @@ class Options:
     def __str_to_date(self, date_str):
         if isinstance(date_str, datetime.date):
             return date_str
-        try:
-            date = datetime.datetime.strptime(date_str, self.date_format).date()
-        except ValueError:
-            raise ValueError(
-                f"Date must be in the format you initialized the class, {self.date_format}. You entered {date_str}"
-            )
-        return date
+        return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
 
-    def _tau(self, date=None):
-        if date is None:
-            date = datetime.date.today()
+    def _tau(self, day=None):
+        if day is None:
+            day = datetime.date.today()
         else:
-            date = self.__str_to_date(date)
-        days = (self.expiry_date - date).days / 365
-        if days < 0:
-            raise ValueError("Execrice Date can not be AFTER the strike date")
-        return days
+            day = self.__str_to_date(day)
+        return (self.expiry_date - day).days / 365
 
 
 class Call(Options):
-    def __init__(self, strike_price, expiry_date, iv, date_format="%d-%m-%Y") -> None:
-        super().__init__(strike_price, expiry_date, iv, date_format=date_format)
+    def __init__(self, strike_price, expiry_date) -> None:
+        super().__init__(strike_price, expiry_date)
         self.__price = None
         self.__greeks = None
 
     def __repr__(self) -> str:
-        return f"Call({self.strike_price}, {self.expiry_date}, {self.iv})"
-
-    def __str__(self) -> str:
-        return f"Call({self.strike_price}, {self.expiry_date}, {self.iv})"
+        return f"Call({self.strike_price}, {self.expiry_date})"
 
     @property
     def greeks(self):
         if not self.__greeks:
             raise ValueError(
-                "Greeks not calculated. You must call `calculate_price` first."
+                "Greeks not calculated. You must call calculate_price first."
             )
         return self.__greeks
 
     def get_price(self):
         if self.__price is None:
             raise ValueError(
-                "Price not calculated. You must call `calculate_price` first."
+                "Price not calculated. You must call calculate_price first."
             )
         return self.__price
 
     def calculate_price(
-        self,
-        spot_price,
-        date=None,
-        return_greeks=False,
+        self, spot_price, risk_free_rate, volatility, day=None, return_greeks=False
     ):
         """
         Calculate the price of a call option using the Black-Scholes model.
@@ -120,10 +64,12 @@ class Call(Options):
         ----------
         spot_price : float
             The current price of the underlying asset.
+        risk_free_rate : float
+            The risk-free interest rate.
         volatility : float
             The volatility of the underlying asset.
-        date : str, optional
-            The date in which price has to be calculated, by default None which means today.
+        day : str, optional
+            The day, by default None. Date must be in the format YYYY-MM-DD.
         return_greeks : bool, optional
             Whether to return the greeks, by default False
 
@@ -135,12 +81,12 @@ class Call(Options):
             The greeks of the call option.
         """
         bs = BlackScholes()
-        tau = self._tau(date=date)
+        tau = self._tau(day=day)
         S = spot_price
         K = self.strike_price
-        r = RISK_FREE_RATE
-        iv = self.iv
-        price, greeks = bs.call(S, K, r, iv, tau, greeks=True)
+        r = risk_free_rate
+        sigma = volatility
+        price, greeks = bs.call(S, K, r, sigma, tau, greeks=True)
         self.__price = price
         self.__greeks = greeks
         if return_greeks:
@@ -153,44 +99,38 @@ class Call(Options):
     def time_value(self, spot_price):
         if self.__price is None:
             raise ValueError(
-                "Price not calculated. You must call `calculate_price` first."
+                "Price not calculated. You must call calculate_price first."
             )
 
         return self.__price - self.intrinsic_value(spot_price)
 
 
 class Put(Options):
-    def __init__(self, strike_price, expiry_date, iv, date_format="%d-%m-%Y") -> None:
-        super().__init__(strike_price, expiry_date, iv, date_format=date_format)
+    def __init__(self, strike_price, expiry_date) -> None:
+        super().__init__(strike_price, expiry_date)
         self.__price = None
         self.__greeks = None
 
     def __repr__(self) -> str:
-        return f"Put({self.strike_price}, {self.expiry_date}, {self.iv})"
-
-    def __str__(self) -> str:
-        return f"Put({self.strike_price}, {self.expiry_date}, {self.iv})"
+        return f"Put({self.strike_price}, {self.expiry_date})"
 
     @property
     def greeks(self):
         if not self.__greeks:
             raise ValueError(
-                "Greeks not calculated. You must call `calculate_price` first."
+                "Greeks not calculated. You must call calculate_price first."
             )
         return self.__greeks
 
     def get_price(self):
         if self.__price is None:
             raise ValueError(
-                "Price not calculated. You must call `calculate_price` first."
+                "Price not calculated. You must call calculate_price first."
             )
         return self.__price
 
     def calculate_price(
-        self,
-        spot_price,
-        date=None,
-        return_greeks=False,
+        self, spot_price, risk_free_rate, volatility, day=None, return_greeks=False
     ):
         """
         Calculate the price of a put option using the Black-Scholes model.
@@ -199,8 +139,12 @@ class Put(Options):
         ----------
         spot_price : float
             The current price of the underlying asset.
-        date : str, optional
-            The date in which price has to be calculated, by default None which means today.
+        risk_free_rate : float
+            The risk-free interest rate.
+        volatility : float
+            The volatility of the underlying asset.
+        day : str, optional
+            The day, by default None. Date must be in the format YYYY-MM-DD.
         return_greeks : bool, optional
             Whether to return the greeks, by default False
 
@@ -212,11 +156,11 @@ class Put(Options):
             The greeks of the put option.
         """
         bs = BlackScholes()
-        tau = self._tau(date=date)
+        tau = self._tau(day=day)
         S = spot_price
         K = self.strike_price
-        r = RISK_FREE_RATE
-        sigma = self.iv
+        r = risk_free_rate
+        sigma = volatility
         price, greeks = bs.put(S, K, r, sigma, tau, greeks=True)
         self.__price = price
         self.__greeks = greeks
